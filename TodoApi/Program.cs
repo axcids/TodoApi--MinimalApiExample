@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using FluentValidation;
 using TodoApi;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -6,14 +7,23 @@ var builder = WebApplication.CreateBuilder(args);
 // Add DI
 builder.Services.AddDbContext<TodoDb>(options => options.UseInMemoryDatabase("TodoList"));
 
+
 var app = builder.Build();
 
 // Configure pipeline - UseMethod..
 app.MapPost("/AddNewTodoItem", async (TodoDb db, TodoItem item) => { 
-    db.Todos.Add(item); // Add the new item to the database
-    await db.SaveChangesAsync(); // Save changes to the database
-    return Results.Created($"/{item.Id}", item); // Return a 201 Created response with the location of the new item
-
+    var validator = new TodoItemValidator(); // Create a new instance of the validator
+    var result = await validator.ValidateAsync(item, options => options.IncludeRuleSets("Create")); // Validate the item using the "Create" rule set
+    if (!result.IsValid) // Check if validation failed
+    {
+        var errors = result.Errors.Select(e => e.ErrorMessage); // Get the error messages
+        return Results.BadRequest(errors); // Return a 400 Bad Request with the error messages
+    }
+    else {
+        db.Todos.Add(item); // Add the new item to the database
+        await db.SaveChangesAsync(); // Save changes to the database
+        return Results.Created($"/{item.Id}", item); // Return a 201 Created response with the location of the new item
+    }
 });
 app.MapGet("/GetAllTodoItems", async (TodoDb db) => {
     return await db.Todos.ToListAsync(); // Return all items in the database
